@@ -57,7 +57,10 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 			          // send message to server when Connected
 				        // webSocket.sendTXT("Connected");
                   Serial.printf("Connecting to mqtt now...");
-                 client.connect("ESP8266Client","gbrault","gb080556");
+                  int r = random(10000, 2000000);
+                  char buf[50];
+                  snprintf(buf,50,"ESP8266Client.%d",r);
+                 client.connect(buf,"gbrault","gb080556");
             }
             break;
         case WStype_TEXT:
