@@ -48,7 +48,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
     switch(type) {
         case WStype_DISCONNECTED:
             USE_SERIAL.printf("[WSc] Disconnected!\n");
-            setup();
+            WiFi.mode(WIFI_OFF);
             break;
         case WStype_CONNECTED:
             {
