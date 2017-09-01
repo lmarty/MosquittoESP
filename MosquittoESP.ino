@@ -32,8 +32,8 @@ unsigned long last;
 WebSocketsClient webSocket;
 PubSubClient client(webSocket);
 
-#define STA_SSID "NETGEAR28"
-#define STA_PASS "vanillariver618"
+#define STA_SSID "ssid"
+#define STA_PASS "password"
 
 #define USE_SERIAL Serial
 
@@ -171,9 +171,9 @@ void setup() {
     sntp_init();    
     
 
-    webSocket.setAuthorization("gbrault","gb080556");
+    webSocket.setAuthorization("user","password");
     //https://www.grc.com/fingerprints.htm
-    webSocket.beginSSL("nupc.org", 443, "/mqtt","C0 C7 EE F9 99 FD 51 E3 6B 13 B4 BC C4 89 59 CD B7 86 66 EA","mqtt");
+    webSocket.beginSSL("server", port, "url","C0 C7 EE F9 99 FD 51 E3 6B 13 B4 BC C4 89 59 CD B7 86 66 EA","mqtt");
     webSocket.onEvent(webSocketEvent);
 
     client.setCallback(callback);
@@ -225,7 +225,7 @@ void loop() {
       unsigned long t = millis();
       if ((t - last > 30*1000UL)){
           char buf[256];
-          snprintf(buf,256,"{\"username\":\"gbrault\",\"payload\":%d}",sntp_get_current_timestamp());
+          snprintf(buf,256,"{\"username\":\"username\",\"payload\":%d}",sntp_get_current_timestamp());
           client.publish("Home/time", buf);
           last = t;
           uint32_t free = system_get_free_heap_size();
