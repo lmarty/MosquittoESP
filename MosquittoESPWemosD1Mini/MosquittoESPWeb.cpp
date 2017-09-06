@@ -5,6 +5,7 @@ MosquittoESPWeb::MosquittoESPWeb(int MaxEEPROM,char *www_username, char*www_pass
     _MaxEEPROM=MaxEEPROM;
     _www_username=www_username;
     _www_password=www_password;
+    action=0;
     this->on("/", [](void* server){
       LOG("/\n");
       MosquittoESPWeb* s = static_cast<MosquittoESPWeb *>(server);
@@ -18,6 +19,22 @@ MosquittoESPWeb::MosquittoESPWeb(int MaxEEPROM,char *www_username, char*www_pass
       if(!s->authenticate(s->_www_username, s->_www_password))
                         return s->requestAuthentication();
       s->send(200, "text/plain", "Delete OK");
+    });
+    this->on("/stop", [](void* server){
+      LOG("/stop\n");
+      MosquittoESPWeb* s = static_cast<MosquittoESPWeb *>(server);
+      if(!s->authenticate(s->_www_username, s->_www_password))
+                        return s->requestAuthentication();
+      s->action=1;
+      s->send(200, "text/plain", "Stop OK");
+    });
+    this->on("/start", [](void* server){
+      LOG("/start\n");
+      MosquittoESPWeb* s = static_cast<MosquittoESPWeb *>(server);
+      if(!s->authenticate(s->_www_username, s->_www_password))
+                        return s->requestAuthentication();
+      s->action=0;
+      s->send(200, "text/plain", "Start OK");
     });
     this->on("/set", [](void* server){
       MosquittoESPWeb* s = static_cast<MosquittoESPWeb *>(server);

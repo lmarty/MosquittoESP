@@ -1,9 +1,9 @@
 /*
- * WebSocketClientSSL.ino
+ * MosquittoESPWemosD1Mini.ino
  *
- *  Created on: 10.12.2015
+ *  Created on: 06.09.2017
  *
- *  note SSL is only possible with the ESP8266
+ *  Websocket MQTT SSL
  *
  */
 #include "context.h"
@@ -15,107 +15,138 @@
 extern "C" {
 #include "user_interface.h"
 }
+#include <umm_malloc/umm_malloc.h>
 #include <Arduino.h>
 #include <NtpClientLib.h>
+#include <EEPROM.h>
 
 #include <ESP8266WiFi.h>
-
-// #include <ESP8266WebServer.h>
-
-#define DEBUG_ESP_PORT Serial;
 
 #include "WebSocketsClient.h"
 #include "PubSubClient.h"
 #include <Hash.h>
 #include <Ticker.h>
 #include <ArduinoJson.h>
+#include "MosquittoESPWeb.h"
+
+WebSocketsClient *webSocket;
+PubSubClient *client;
 
 Ticker showtime;
 
 int myState;
 unsigned long last;
 unsigned long first;
+int wifi_mode;
+#define eeprom 512
 
-WebSocketsClient *webSocket;
-PubSubClient *client;
+MosquittoESPWeb *server;
 
 #define STA_SSID "NETGEAR28"
 #define STA_PASS "vanillariver618"
 
-#define USE_SERIAL Serial
-
-const char* www_username = "admin";
-const char* www_password = "esp8266";
+#define LOG_SERIAL Serial.printf
 
 void getTime(){
-   Serial.printf("epoch=%d\n",sntp_get_current_timestamp());
+   LOG("epoch=%d\n",sntp_get_current_timestamp());
+}
+
+void printMem(){
+  size_t size = umm_free_heap_size();
+  uint32_t free = system_get_free_heap_size();
+  LOG("free mem = %d -- %d\n",free,size);
+  console("free mem = %d -- %d\n",free,size);
+}
+
+void console(char *format, ...){
+  char buf[MQTT_MAX_PACKET_SIZE+1];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(buf,MQTT_MAX_PACKET_SIZE,format,args);
+  va_end(args);
+  unsigned long t = millis();
+  if(webSocket && client){
+    if(client &&  (client->state()==MQTT_CONNECTED) && (t - first > 30*1000UL)){    
+        client->publish("Home/console",buf);
+    }
+  }
 }
 
 
 void setup() {
-
+  
+  EEPROM.begin(eeprom);
+  wifi_mode=0;   // no WIFI
   pinMode(led, OUTPUT);
   myState = 0;
   last=millis();
-  USE_SERIAL.begin(115200);
-  USE_SERIAL.setDebugOutput(true);
-  uint32_t free = system_get_free_heap_size();
-  Serial.printf("free mem = %d\n");
+  client=NULL;
+  webSocket=NULL;
+  server=NULL;
+  
+  Serial.begin(115200);
+  Serial.setDebugOutput(false);
 
-    Serial.println("WIFI Off\n");
+  LOG_SERIAL("\n");
+  LOG_SERIAL("\n");
+  LOG_SERIAL("\n");
+  LOG_SERIAL("\n");
+  delay(2000);
+    printMem();
+    LOG_SERIAL("WIFI Off\n");
     WiFi.mode(WIFI_OFF);
-    delay(100);
+    WiFi.disconnect();  
+    delay(500);
 
     WiFi.mode(WIFI_STA);
+    // WiFi.disconnect();  
+    delay(500);
     WiFi.begin(STA_SSID, STA_PASS);
 
-    Serial.println();
-    Serial.println();
-    Serial.print("Wait for WiFi... ");
+    LOG_SERIAL("\n");
+    LOG_SERIAL("\n");
+    LOG_SERIAL("Wait for WiFi STA mode... ");
 
     int count=0;
     while(WiFi.status() != WL_CONNECTED) {
-        Serial.print(".");
+        LOG_SERIAL(".");
         delay(500);
         count++;
         if(count>30){
           // switch to AP...
+          WiFi.mode(WIFI_AP);          
+          WiFi.softAPdisconnect();
+          delay(500);
+          if(WiFi.softAP("MosquittoESP_WSMQTT", "esp8266")){
+            wifi_mode=2;
+            server = new MosquittoESPWeb(eeprom,"adm","esp8266",80);      
+            printMem();
+          }
         }
     }
 
-    Serial.println("");
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
+    if(wifi_mode==0) wifi_mode=1; // STA Mode
 
-/*
-    server.on("/", [](){
-      if(!server.authenticate(www_username, www_password))
-        return server.requestAuthentication();
-      server.send(200, "text/plain", "Login OK");
-    });
-    server.begin();
-    */
+    LOG_SERIAL("\n");
+    LOG_SERIAL("WiFi connected\n");
+    LOG_SERIAL("IP address: \n");
+    LOG_SERIAL("%d:%d:%d:%d",WiFi.localIP()[0],WiFi.localIP()[1],WiFi.localIP()[2],WiFi.localIP()[3]);
 
-    Serial.print("Open http://");
-    Serial.print(WiFi.localIP());
-    Serial.println("/ in your browser to see it working");
-
-    delay(500);
-
+if(wifi_mode==1){
     showtime.attach(60,getTime);
     sntp_stop();
     sntp_setservername(0,"pool.ntp.org");
     sntp_init();  
     sntp_stop();
     sntp_set_timezone(0);
-    sntp_init();   
+    sntp_init();
+}
 
-    webSocket=NULL;
-    client=NULL;
 
-    setWSMQTT();
-
+    if(wifi_mode==1) {
+      setWSMQTT();
+      printMem();
+    }
 }
 
 void setWSMQTT(){
@@ -126,9 +157,11 @@ void setWSMQTT(){
       //https://www.grc.com/fingerprints.htm
       webSocket->beginSSL("nupc.org", 443, "/mqtt","C0 C7 EE F9 99 FD 51 E3 6B 13 B4 BC C4 89 59 CD B7 86 66 EA","mqtt");
       webSocket->onEvent(webSocketEvent);
+ 
       client = new PubSubClient(webSocket);
       if(client){
         client->setCallback(callback);
+ 
       } else{
         LOG("could not create PubSubClient!!!\n");
       }
@@ -142,30 +175,32 @@ void loop() {
         Serial.println("WiFi not connected!");
         delay(5000); // let it recover!!!
     } else {
-      if(webSocket && client){
-        webSocket->loop();   // will call webSocketEvent depending on state  ... handle client reconnection ...
-        client->loop();      // just maintain the MQTTPINGREQ watchdog
-        if(client->state()==MQTT_CONNECTED){
-          if(myState==0){
-            // Once connected, publish an announcement... only once
-            client->publish("Home/test1", "{\"username\":\"gbrault\",\"payload\":1}");
-            // ... and resubscribe
-            client->subscribe("Home/test1");   
-            myState=1;
-          } else {
-            unsigned long t = millis();
-            if ((t - last > 5*1000UL)&&(t - first > 30*1000UL)){
-                char buf[256];
-                snprintf(buf,256,"{\"username\":\"gbrault\",\"payload\":%d}",sntp_get_current_timestamp());
-                client->publish("Home/time", buf);
-                last = t;
-                uint32_t free = system_get_free_heap_size();
-                Serial.printf("free mem = %d\n");
+        if( webSocket && client){
+          webSocket->loop();   // will call webSocketEvent depending on state  ... handle client reconnection ...
+          client->loop();      // just maintain the MQTTPINGREQ watchdog
+          if(client->state()==MQTT_CONNECTED){
+            if(myState==0){
+              // Once connected, publish an announcement... only once
+              client->publish("Home/test1", "{\"username\":\"gbrault\",\"payload\":1}");
+              // ... and resubscribe
+              client->subscribe("Home/test1");   
+              myState=1;
+            } else {
+              unsigned long t = millis();
+              if ((t - last > 5*1000UL)&&(t - first > 30*1000UL)){
+                  char buf[256];
+                  snprintf(buf,256,"{\"username\":\"gbrault\",\"payload\":%d}",sntp_get_current_timestamp());
+                  client->publish("Home/time", buf);
+                  last = t;
+                  console("Topic(%s),=%s","Home/time",buf);
+                  printMem();
+              }
             }
-          }
-        }      
-      }
-      // server.handleClient();
+          }      
+        }
+    }
+    if(server){
+        server->handleClient();
     }
 }
 
@@ -174,7 +209,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
     // this is called by webSocket.loop()...
     switch(type) {
         case WStype_DISCONNECTED:
-            USE_SERIAL.printf("[WSc] Disconnected!\n");
+            LOG("[WSc] Disconnected!\n");
             delete(client);
             setWSMQTT();
             myState=0;  // reset first MQTT activity
@@ -182,24 +217,24 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
             break;
         case WStype_CONNECTED:
             {
-                USE_SERIAL.printf("[WSc] Connected to url: %s\n",  payload);
-                Serial.printf("Connecting to mqtt now...");
+                LOG("[WSc] Connected to url: %s\n",  payload);
+                LOG("Connecting to mqtt now...");
                 int r = random(10000, 2000000);
                 char buf[50];
                 snprintf(buf,50,"ESP8266Client.%d",r);
                 while(client->connect(buf,"gbrault","gb080556")){
-                  Serial.printf("Not able to connect to MQTT yet...");
+                  LOG("Not able to connect to MQTT yet...");
                   // need to do some client connect again...
                   delay(100);
                 }
             }
             break;
         case WStype_TEXT:
-            USE_SERIAL.printf("[WSc] get text: %s\n", payload);
+            LOG("[WSc] get text: %s\n", payload);
             // not used by this application
             break;
         case WStype_BIN:
-            USE_SERIAL.printf("[WSc] Read_BIN get binary length: %u\n", length);
+            LOG("[WSc] Read_BIN get binary length: %u\n", length);
             hexdump(payload, length);
             
             webSocket->setBuffer(payload, length);  // to prepare reading from MQTT
@@ -209,7 +244,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
                   if(res==1){
                     // connected!
                     webSocket->printType(payload[0]&0xF0);
-                    Serial.println("connected to MQTT...");                
+                    LOG("connected to MQTT...");                
                     myState=0;  // reset first MQTT activity
                     first=last=millis(); // reset time publishing
                     // how to reset the MQTTPINGREQ?
@@ -231,21 +266,22 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
+  unsigned long t = millis();
   // payload not valid after this call
-  // this is called by client.process() ... which will be called by webSocket.loop()
+  // this is called by client.process() ... which is called by webSocket.loop()
   DynamicJsonBuffer jsonBuffer;
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
+  LOG("Message arrived [");
+  LOG(topic);
+  LOG("] ");
   for (int i = 0; i < length; i++) {
-    Serial.print((char)payload[i]);
+    LOG("%c",(char)payload[i]);
   }
-  Serial.println();
+  LOG();
 
   JsonObject& root = jsonBuffer.parseObject(payload);
   String value = root["payload"];
-  Serial.print(value.c_str()[0]);
-  Serial.println();
+  LOG("%c",value.c_str()[0]);
+  LOG("\n");
   // Switch on the LED if an 1 was received as first character
   if (value.c_str()[0] == '1') {
     digitalWrite(led, LOW);   // Turn the LED on (Note that LOW is the voltage level
@@ -254,8 +290,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
   } else {
     digitalWrite(led, HIGH);  // Turn the LED off by making the voltage HIGH
   }
-
-  uint32_t free = system_get_free_heap_size();
-  Serial.printf("free mem = %d\n");
+  printMem();
 }
 

@@ -884,5 +884,5 @@ void WebSocketsClient::printType(int type){
 		default:
 		    s = "unknown";
 	}
-	Serial.printf("MQTT Message Type=(%d)%s\n",type >>4,s.c_str());
+	LOG("MQTT Message Type=(%d)%s\n",type >>4,s.c_str());
 }

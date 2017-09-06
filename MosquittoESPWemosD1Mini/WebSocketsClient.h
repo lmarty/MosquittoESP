@@ -25,6 +25,7 @@
 #ifndef WEBSOCKETSCLIENT_H_
 #define WEBSOCKETSCLIENT_H_
 
+#include "context.h"
 #include "WebSockets.h"
 
 #define MQTTCONNECT     1 << 4  // Client request to connect to Server
