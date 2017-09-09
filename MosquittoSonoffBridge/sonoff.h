@@ -152,6 +152,8 @@ void loop() {
             delay(1);
           }
         }
+        // send Ack message...
+        sn.sendAck();        
     }
   }
 

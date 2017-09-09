@@ -210,6 +210,8 @@ void loop() {
                       if(t - first > 30*1000UL){
                         client->publish("Home/key",tmp);
                       }
+                      // send Ack message...
+                      sn.sendAck();
                   }
                 }
                 if(r==-1){  // flush any incoming data to resynchronize the flow               
