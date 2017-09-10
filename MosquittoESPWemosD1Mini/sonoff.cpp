@@ -1,7 +1,9 @@
 #include "sonoff.h"
 sonoff::sonoff(){
   MCUrequestState=0;
-  handshake=0;
+  counter=0;
+  length=0;
+  last=millis();
 }
 sonoff::~sonoff(){
   
@@ -19,149 +21,106 @@ void sonoff::LearningKey(){
   sendAction('0xA1');
 }
 /*
- * return 
- * 0: call again, 
- * -1:not an MCU message, 
- * 2: Learning Timeout, 
- * 3:Learning Success, Time & key available, 
- * 4:Receive Key Value, Time & key available
+ * return
+ * 0: need to loop
+ * -1: error
  */
 int sonoff::MCUMessages(){
-  int result=1;  
-    while(result==1){ // till result==1, things to process...
-      if(Serial.available()){
-        switch(MCUrequestState){
-          case 0 :
-            if(Serial.peek()=='xAA'){
-              Serial.read();
-              MCUrequestState=1; // triggered an MCU request
-            } else{
-              MCUrequestState=0; // for next time
-              result= -1;  // not an MCU request or an error
+  int result=0;
+  if(MCUrequestState==0){
+    last = millis();
+  }  
+  while((result==0)&&(Serial.available())&&(millis()-last < 10*1000UL)){
+    switch(MCUrequestState){
+      case 0:  // message border trigger
+        {
+          uint8_t c = Serial.read();
+          LOG_RF("%02x : ",c);
+          if(c==0xAA){
+            buffer[counter]=c;
+            counter++;
+            MCUrequestState=1;
+            last=millis();           
+          }       
+        }
+        break;
+      case 1:
+        {
+          uint8_t c = Serial.read();
+          LOG_RF("%02x ",c);
+          buffer[counter]=c;
+          counter++;
+          switch(c){
+            case 0xA0: //return action
+              length=3;
+              MCUrequestState=2;
+              break;
+            case 0xA2: //timeout exits
+              length=3;
+              MCUrequestState=3;
+              break;
+            case 0xA3: // learning success
+              length=12;
+              MCUrequestState=4;
+              break;
+            case 0xA4: // forward RF Remote key value
+             length=12;
+             MCUrequestState=5;
+             break;
+            default:
+              MCUrequestState=0;
+              counter=0;
+              length=0;
+              result = -1; // error   
+              break;        
+          }
+        }
+        break;
+      case 2:
+      case 3:
+      case 4:  
+      case 5: // read Serial into buffer according to count up to length
+        {          
+          uint8_t c = Serial.read();
+          LOG_RF("%02x ",c);
+          buffer[counter]=c;
+          counter++;
+          if(counter==length){ 
+            result = -1;      
+            switch(MCUrequestState){
+                case 2:
+                case 3:
+                  if(buffer[2]==0x55){
+                    result = MCUrequestState;
+                  }
+                  break;
+                case 4:
+                case 5:
+                  if(buffer[11]==0x55){
+                    this->Tsyn = buffer[2]<<8|buffer[3];
+                    this->Tlow = buffer[4]<<8|buffer[5];
+                    this->Thigh= buffer[6]<<8|buffer[7];
+                    this->key = buffer[8]<<16|buffer[9]<<8|buffer[10];
+                    result = MCUrequestState;
+                  }
+                  break;
             }
-            break;            
-          case 1:
-            switch(Serial.read()){
-              case '0xA2':            // learning timeout                
-                MCUrequestState=2;
-                break;
-              case '0xA3':            // learning success                
-                 MCUrequestState=3;
-                break;
-              case '0xA4':            // Receive Key Value                
-                MCUrequestState=4;
-                break;
-            }
-            break;
-          case 2: // Learning Timeout        
-            if(Serial.peek()=='0x55'){
-              Serial.read();
-              MCUrequestState=0; // for next time
-              result=2;
-            }else{
-              MCUrequestState=0; // for next time
-              result= -1;  // not an MCU request or an error
-            }
-            break;
-          case 3: // Learning Success 1st step
-            // need now to read Tsync, Tlow 24bit data and 0x55
-            this->Tsyn=Serial.read()<<8;
-            MCUrequestState=30;
-            break;
-          case 30:// Learning Success 2nd step
-            this->Tsyn=this->Tsyn&Serial.read();
-            MCUrequestState=31;
-            break;
-          case 31:
-            this->Tlow=Serial.read()<<8;
-            MCUrequestState=32;
-            break;
-          case 32:
-            this->Tlow=this->Tlow&Serial.read();
-            MCUrequestState=33;
-            break;
-          case 33:
-            this->Thigh=Serial.read()<<8;
-            MCUrequestState=34;
-            break;
-          case 34:
-            this->Thigh=this->Thigh&Serial.read();
-            MCUrequestState=35;
-            break;
-          case 35:
-            this->Thigh=Serial.read()<<16;
-            MCUrequestState=36;
-            break;
-          case 36:
-            this->Thigh=this->Thigh&(Serial.read()<<8);
-            MCUrequestState=37;
-            break;
-          case 37:
-            this->Thigh=this->Thigh&Serial.read();
-            MCUrequestState=38;
-            break;
-          case 38:
-            if(Serial.peek()=='0x55'){
-              Serial.read();
-              MCUrequestState=0; // for next time
-              result=3;
-            }else{
-              MCUrequestState=0; // for next time
-              result= -1;  // not an MCU request or an error
-            }
-           break;
-          case 4: //forward RF Remote key value
-            this->Tsyn=Serial.read()<<8;
-            MCUrequestState=40;
-            break;
-          case 40:// Learning Success 2nd step
-            this->Tsyn=this->Tsyn&Serial.read();
-            MCUrequestState=41;
-            break;
-          case 41:
-            this->Tlow=Serial.read()<<8;
-            MCUrequestState=42;
-            break;
-          case 42:
-            this->Tlow=this->Tlow&Serial.read();
-            MCUrequestState=43;
-            break;
-          case 43:
-            this->Thigh=Serial.read()<<8;
-            MCUrequestState=44;
-            break;
-          case 44:
-            this->Thigh=this->Thigh&Serial.read();
-            MCUrequestState=45;
-            break;
-          case 45:
-            this->Thigh=Serial.read()<<16;
-            MCUrequestState=46;
-            break;
-          case 46:
-            this->Thigh=this->Thigh&(Serial.read()<<8);
-            MCUrequestState=47;
-            break;
-          case 47:
-            this->Thigh=this->Thigh&Serial.read();
-            MCUrequestState=48;
-            break;
-          case 48:
-            if(Serial.peek()=='0x55'){
-              Serial.read();
-              MCUrequestState=0; // for next time
-              result=4;
-            }else{
-              MCUrequestState=0; // for next time
-              result= -1;  // not an MCU request or an error
-            }
-           break;
-         }
-      }
-      else {
-        return 0; // need to loop again, responsibility of the caller
-      }
+          }
+        }
+        break;
+    }
   }
+  if((MCUrequestState!=0)&&(millis()-last>10 *1000UL)){
+    LOG_RF("timeout!!!%d",millis()-last);
+    result=-1;
+  }
+  if(result!=0){
+    // state to start again
+    counter=0;
+    length=0;
+    MCUrequestState=0;                 
+  }
+  return result;
 }
 void sonoff::TransmitKey(uint16_t Tsyn, uint16_t Tlow, uint16_t Thigh,uint32_t key ){ 
   Serial.write(0xAA);  // Start of Text
