@@ -28,7 +28,7 @@
  * Thigh: uint16 type, it means high level time, unit: us, MSB order (high first send)
  * 
  */
-#define LOG_RF(format,...) console(format, __VA_ARGS__)
+#define LOG_RF(format,...) // console(format, __VA_ARGS__)
 void console(char *,...);
 #include <Arduino.h>
 #include <stdint.h>

@@ -3,7 +3,7 @@ sonoff::sonoff(){
   MCUrequestState=0;
   counter=0;
   length=0;
-  last=millis();
+  this->last=millis();
 }
 sonoff::~sonoff(){
   
@@ -28,9 +28,9 @@ void sonoff::LearningKey(){
 int sonoff::MCUMessages(){
   int result=0;
   if(MCUrequestState==0){
-    last = millis();
+    this->last = millis();
   }  
-  while((result==0)&&(Serial.available())&&(millis()-last < 10*1000UL)){
+  while((result==0)&&(Serial.available()>0)&&(millis()-this->last < 10*1000UL)){
     switch(MCUrequestState){
       case 0:  // message border trigger
         {
@@ -40,13 +40,14 @@ int sonoff::MCUMessages(){
             buffer[counter]=c;
             counter++;
             MCUrequestState=1;
-            last=millis();           
+            this->last=millis();           
           }       
         }
         break;
       case 1:
         {
           uint8_t c = Serial.read();
+          this->last=millis();   
           LOG_RF("%02x ",c);
           buffer[counter]=c;
           counter++;
@@ -82,9 +83,10 @@ int sonoff::MCUMessages(){
       case 5: // read Serial into buffer according to count up to length
         {          
           uint8_t c = Serial.read();
+          this->last=millis();
           LOG_RF("%02x ",c);
           buffer[counter]=c;
-          counter++;
+          counter++;          
           if(counter==length){ 
             result = -1;      
             switch(MCUrequestState){
@@ -110,8 +112,8 @@ int sonoff::MCUMessages(){
         break;
     }
   }
-  if((MCUrequestState!=0)&&(millis()-last>10 *1000UL)){
-    LOG_RF("timeout!!!%d",millis()-last);
+  if((MCUrequestState!=0)&&(millis()-this->last>10 *1000UL)){
+    LOG_RF("timeout!!!%d",millis()-this->last);
     result=-1;
   }
   if(result!=0){
