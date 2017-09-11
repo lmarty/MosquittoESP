@@ -11,7 +11,9 @@ MosquittoMinWeb::MosquittoMinWeb(int MaxEEPROM,char *www_username, char*www_pass
       MosquittoMinWeb* s = static_cast<MosquittoMinWeb *>(server);
       if(!s->authenticate(s->_www_username, s->_www_password))
                         return s->requestAuthentication();
-      s->send(200, "text/plain", "Login OK");
+      char buf[128];
+      snprintf(buf,128,"Login OK (%s)",build_str);
+      s->send(200, "text/plain", buf);
     });
     /*  erase */
     this->on("/erase", [](void* server){
@@ -31,3 +33,7 @@ MosquittoMinWeb::MosquittoMinWeb(int MaxEEPROM,char *www_username, char*www_pass
     LOG_WEB("%d.%d.%d.%d", WiFi.localIP()[0], WiFi.localIP()[1], WiFi.localIP()[2], WiFi.localIP()[3]);
     LOG_WEB("/ in your browser to see it working\n");
 }
+MosquittoMinWeb::~MosquittoMinWeb(){
+  
+}
+

@@ -11,7 +11,9 @@ MosquittoESPWeb::MosquittoESPWeb(int MaxEEPROM,char *www_username, char*www_pass
       MosquittoESPWeb* s = static_cast<MosquittoESPWeb *>(server);
       if(!s->authenticate(s->_www_username, s->_www_password))
                         return s->requestAuthentication();
-      s->send(200, "text/plain", "Login OK");
+      char buf[128];
+      snprintf(buf,128,"Login OK (%s)",build_str);
+      s->send(200, "text/plain", buf);
     });
     /*  erase */
     this->on("/erase", [](void* server){

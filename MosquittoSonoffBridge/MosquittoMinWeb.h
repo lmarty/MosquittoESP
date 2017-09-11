@@ -12,6 +12,8 @@ extern "C" {
 #ifndef DEBUG_WEB
 #define LOG_WEB(...)
 #endif
+
+extern const char *build_str;
 class MosquittoMinWeb : public ESP8266xWebServer
 {
 public:

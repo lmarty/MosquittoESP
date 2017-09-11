@@ -34,6 +34,7 @@ extern "C" {
  * http://<AP IP>set?env={"CWIFISSID":"xxxxxx","CWIFIPSWD":"xxxxxx","WIFISSID":"xxxxx","WIFIPSWD":"xxxxxx","MQTTNAME":"xxxxxx","MQTTPSWD":"xxxxxxx","MQTTPUBKEYPATH":"xxxxxx","MQTTSUBKEYPATH":"xxxxxxx"}
  */
 
+extern const char *build_str;
 class MosquittoESPWeb : public ESP8266xWebServer
 {
 public:

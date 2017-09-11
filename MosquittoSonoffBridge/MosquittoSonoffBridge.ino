@@ -9,7 +9,7 @@
 #include "context.h"
 /* for WEMOS D1 Mini */
 #define led 13
-#define button 16
+#define button 0
 /* for WEMOS D1 Mini */
  
 extern "C" {
@@ -39,6 +39,11 @@ PubSubClient *client;
 int myState;
 unsigned long last;
 unsigned long first;
+unsigned long lastPublishedKey;
+unsigned long lastSubscribedKey;
+unsigned long lastServerMin;
+unsigned long serverMinStart;
+int serverMinLed;
 int wifi_mode;
 #define eeprom 512
 env *oenv;
@@ -49,6 +54,8 @@ MosquittoMinWeb *servermin;
 
 #include "sonoff.h"
 sonoff sn;
+
+const char *build_str = "Version: 1.0 " __DATE__ " " __TIME__;
 
 /*
 void getTime(){
@@ -173,8 +180,9 @@ void setup() {
 }
 
 void setWSMQTT(){
-    last=millis();
-    first=millis();
+    last=first=millis();
+    lastPublishedKey=lastSubscribedKey=last+100;
+    myState=0;  
 
     webSocket = new WebSocketsClient();
   
@@ -228,7 +236,7 @@ void loop() {
                     printMem();
                 }
                 // for debug end
-                if(debug==0){                     
+                if((debug==0)&&(t-lastPublishedKey > 100UL)){                     
                   int r = sn.MCUMessages();
                   if((r!=0)&(r!=-1)){
                     if((r==4)||(r==5)){
@@ -237,29 +245,57 @@ void loop() {
                         snprintf(tmp,128,"{\"username\":\"%s\",\"time\":%d,\"payload\":{\"Tsyn\":%d,\"Tlow\":%d,\"Thigh\":%d,\"key\":%d}}",oenv->MQTTNAME,sntp_get_current_timestamp(),sn.Tsyn, sn.Tlow, sn.Thigh, sn.key);
                         if(t - first > 5*1000UL){
                           client->publish(oenv->MQTTPUBKEYPATH,tmp);
+                          lastPublishedKey=millis();
                         }
                         // send Ack message...
                         sn.sendAck();
                     }
                   }
                   if(r==-1){  // flush any incoming data to resynchronize the flow 
-                    Serial.printf("clear serial input\n");              
+                    console("clear serial input\n");              
                     while(Serial.available()>0){                 
                       Serial.read();
                       delay(1);
                     }
                   }
                 }
-              }           
+              }
+              if((t-lastPublishedKey < 100UL)||(t-lastSubscribedKey < 100UL)){
+                  setLed(1);
+              } else {
+                  setLed(0);
+              }
             }                  
           }
           if(servermin){
               servermin->handleClient();
+              if(millis()-lastServerMin>1000UL){
+                if(serverMinLed==0)serverMinLed=1; else serverMinLed=0;
+                setLed(serverMinLed);
+                lastServerMin=millis();                
+              }
           }
-          if(digitalRead(button)){
-            if(client) delete(client);
-            servermin = new MosquittoMinWeb(eeprom,oenv->WIFISSID, oenv->WIFIPSWD,80);        
+          if(!digitalRead(button)){
+            if(!(servermin)){
+              if(client) delete(client);
+              servermin = new MosquittoMinWeb(eeprom,oenv->WIFISSID, oenv->WIFIPSWD,80);    
+              lastServerMin=serverMinStart=millis(); 
+              serverMinLed=0;  
+           } else {
+              if(millis()-serverMinStart>5*1000UL){                
+                mEEPROM.begin(eeprom);
+                env *otmpenv = new env();
+                mEEPROM.end();
+                if(strcmp(otmpenv->CWIFISSID,"xxxxx")!=0){
+                  delete (oenv);
+                  oenv = otmpenv;
+                  delete(servermin);
+                  setWSMQTT();
+                }
+              }
+           }
           }
+           
         } else {
               if(server){
                   server->handleClient();
@@ -277,8 +313,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
             LOG("[WSc] Disconnected!\n");
             delete(client);
             if(servermin==NULL) setWSMQTT();
-            myState=0;  // reset first MQTT activity
-            first=last=millis();  // reset time publishing
             break;
         case WStype_CONNECTED:
             {
@@ -343,6 +377,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   LOG("\n");
   if(strcmp(topic,oenv->MQTTSUBKEYPATH)==0){
+      lastSubscribedKey=millis();
       const size_t bufferSize = JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(4) + 70;
       DynamicJsonBuffer jsonBuffer(bufferSize);
 
